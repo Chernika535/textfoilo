@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeWork, validatePortfolio, safeUrl, type Portfolio } from '../lib/model.ts';
+const portfolio = (): Portfolio => ({ version: 1, theme: 'editorial', name: 'Автор', role: 'Редактор', bio: '', email: '', location: '', available: true, sections: [{ id: 'one', name: 'Раздел', description: '' }], works: [{ ...makeWork('chat'), sections: ['one'], items: [{ id: 'first', label: 'Вопрос', body: 'Привет', role: 'author', choices: [{ label: 'Далее', target: 'second' }] }, { id: 'second', label: 'Ответ', body: 'Мир', role: 'reader', choices: [] }] }] });
+test('backup round trip preserves text and branches', () => { const p = portfolio(); assert.deepEqual(validatePortfolio(JSON.parse(JSON.stringify(p))), p); });
+test('import rejects missing target scenes', () => { const p = portfolio(); p.works[0].items[0].choices[0].target = 'missing'; assert.throws(() => validatePortfolio(p)); });
+test('import rejects unknown version without changing data', () => { const p = portfolio(); const raw = JSON.stringify(p); assert.throws(() => validatePortfolio({ ...p, version: 2 })); assert.equal(JSON.stringify(p), raw); });
+test('import rejects duplicate works and malformed arrays', () => { const p = portfolio(); assert.throws(() => validatePortfolio({ ...p, works: [p.works[0], p.works[0]] })); assert.throws(() => validatePortfolio({ ...p, works: [{ ...p.works[0], items: null }] })); });
+test('unsafe protocols cannot become video links', () => { assert.equal(safeUrl('javascript:alert(1)'), undefined); assert.equal(safeUrl('data:text/html,test'), undefined); assert.equal(safeUrl('https://example.com/a.mp4'), 'https://example.com/a.mp4'); });
+test('import rejects dangling sections and CSS injection', () => { const p = portfolio(); assert.throws(() => validatePortfolio({ ...p, sections: [] })); p.works[0].color = 'red; background: url(https://example.com)'; assert.throws(() => validatePortfolio(p)); });
