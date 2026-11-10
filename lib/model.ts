@@ -20,11 +20,11 @@ export const themes = [
   { id: 'gallery', name: 'Галерея', note: 'Пространство для главного', vibe: 'Минималистичная', color: '#e7e3db' },
 ] as const;
 export type Theme = typeof themes[number]['id'];
-export interface Item { id: string; label: string; body: string; role: 'author' | 'reader'; choices: { label: string; target: string }[] }
+export interface Item { id: string; label: string; body: string; role: 'author' | 'reader'; image?: string; choices: { label: string; target: string }[] }
 export interface Work {
   id: string; type: Format; title: string; project: string; sections: string[]; excerpt: string;
   body: string; original: string; comment: string; items: Item[]; status: 'published' | 'draft';
-  color: string; sender: string; platform: 'telegram' | 'instagram' | 'linkedin';
+  coverImage?: string; color: string; sender: string; platform: 'telegram' | 'instagram' | 'linkedin';
   seoTitle: string; seoDescription: string; keywords: string; videoUrl: string; model: string;
   goal: string; contribution: string; result: string; metricBefore: string; metricAfter: string; metricLabel: string;
 }
@@ -36,7 +36,7 @@ export interface Portfolio {
 export const uid = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const makeItem = (): Item => ({ id: uid(), label: '', body: '', role: 'author', choices: [] });
 export function makeWork(type: Format): Work {
-  return { id: uid(), type, title: '', project: '', sections: [], excerpt: '', body: '', original: '', comment: '', items: [], status: 'draft', color: '#e5ebdf', sender: '', platform: 'telegram', seoTitle: '', seoDescription: '', keywords: '', videoUrl: '', model: '', goal: '', contribution: '', result: '', metricBefore: '', metricAfter: '', metricLabel: '' };
+  return { id: uid(), type, title: '', project: '', sections: [], excerpt: '', body: '', original: '', comment: '', items: [], status: 'draft', color: '#eeeeee', sender: '', platform: 'telegram', seoTitle: '', seoDescription: '', keywords: '', videoUrl: '', model: '', goal: '', contribution: '', result: '', metricBefore: '', metricAfter: '', metricLabel: '' };
 }
 export function validatePortfolio(value: unknown): Portfolio {
   if (!value || typeof value !== 'object') throw new Error('В файле нет данных портфолио.');
@@ -52,14 +52,16 @@ export function validatePortfolio(value: unknown): Portfolio {
     workIds.add(w.id);
     const base = makeWork(w.type);
     for (const key of Object.keys(base) as (keyof Work)[]) if (typeof base[key] === 'string' && typeof w[key] !== 'string') throw new Error('Некорректные поля работы.');
+    if (w.coverImage !== undefined && typeof w.coverImage !== 'string') throw new Error('Некорректная обложка.');
     if (!/^#[0-9a-f]{6}$/i.test(w.color) || !['telegram', 'instagram', 'linkedin'].includes(w.platform)) throw new Error('Некорректное оформление работы.');
     if (!Array.isArray(w.sections) || w.sections.some(s => !sectionIds.has(s)) || !Array.isArray(w.items)) throw new Error('Некорректное содержимое работы.');
     const ids = new Set(w.items.map(i => i?.id));
     if (ids.size !== w.items.length) throw new Error('Повторяются идентификаторы сообщений.');
-    w.items.forEach(i => { if (!i || typeof i.id !== 'string' || typeof i.label !== 'string' || typeof i.body !== 'string' || !['author', 'reader'].includes(i.role) || !Array.isArray(i.choices) || i.choices.some(c => !c || typeof c.label !== 'string' || typeof c.target !== 'string' || !ids.has(c.target))) throw new Error('Некорректные сообщения или переходы.'); });
+    w.items.forEach(i => { if (!i || typeof i.id !== 'string' || typeof i.label !== 'string' || typeof i.body !== 'string' || (i.image !== undefined && typeof i.image !== 'string') || !['author', 'reader'].includes(i.role) || !Array.isArray(i.choices) || i.choices.some(c => !c || typeof c.label !== 'string' || typeof c.target !== 'string' || !ids.has(c.target))) throw new Error('Некорректные сообщения или переходы.'); });
   });
   return p;
 }
 export function safeUrl(value: string): string | undefined {
+  if (/^\/api\/media\/[a-f0-9-]{36}$/i.test(value)) return value;
   try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) ? u.href : undefined; } catch { return undefined; }
 }
