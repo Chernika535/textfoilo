@@ -6,7 +6,7 @@ import { validatePortfolio } from '@/lib/model';
 export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return json({ error: 'Недопустимый источник запроса.' }, 403);
-  const user = await identity(); if (!user) return json({ error: 'Войдите в аккаунт.' }, 401);
+  const user = await identity(); if (!user) return json({ error: 'Сессия браузера недоступна. Обновите страницу.' }, 401);
   try {
     const text = await request.text(); if (text.length > 2_000_000) return json({ error: 'Слишком большой документ.' }, 413);
     const input = JSON.parse(text); const p = publicationDocument(validatePortfolio(input.portfolio));
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 }
 export async function DELETE(request: Request) {
   if (!isSameOrigin(request)) return json({ error: 'Недопустимый источник запроса.' }, 403);
-  const user = await identity(); if (!user) return json({ error: 'Войдите в аккаунт.' }, 401);
+  const user = await identity(); if (!user) return json({ error: 'Сессия браузера недоступна. Обновите страницу.' }, 401);
   await getDb().update(publications).set({ active: 0 }).where(eq(publications.userId,user.userId));
   return json({ ok: true });
 }

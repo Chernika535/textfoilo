@@ -1,14 +1,15 @@
 import { build } from 'esbuild';
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync, mkdtempSync, rmSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
 mkdirSync('.sites-runtime',{recursive:true});
 const tmp=mkdtempSync(resolve('.sites-runtime/api-tests-'));
 const sql=new DatabaseSync(':memory:');
-for(const statement of readFileSync('drizzle/0000_complex_bloodstrike.sql','utf8').split('--> statement-breakpoint'))sql.exec(statement);
+for(const file of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort()) for(const statement of readFileSync('drizzle/'+file,'utf8').split('--> statement-breakpoint'))sql.exec(statement);
 const d1={prepare(query){let params=[];const prepared={bind(...values){params=values;return prepared;},async raw(){const stmt=sql.prepare(query);stmt.setReturnArrays(true);return stmt.all(...params);},async all(){return {results:sql.prepare(query).all(...params),success:true};},async run(){return {meta:sql.prepare(query).run(...params),success:true};},async first(){return sql.prepare(query).get(...params)??null;}};return prepared;}};
+d1.batch=async statements=>{sql.exec('BEGIN');try{const result=[];for(const statement of statements)result.push(await statement.all());sql.exec('COMMIT');return result;}catch(e){sql.exec('ROLLBACK');throw e;}};
 const objects=new Map();
 const bucket={async put(key,stream,options){objects.set(key,{bytes:await new Response(stream).arrayBuffer(),type:options.httpMetadata.contentType});},async delete(key){objects.delete(key);},async get(key){const o=objects.get(key);return o?{body:o.bytes,size:o.bytes.byteLength,httpEtag:'"test"'}:null;}};
 globalThis.__textfolioTest={headers:new Headers(),env:{DB:d1,BUCKET:bucket}};
@@ -23,7 +24,14 @@ function account(id){globalThis.__textfolioTest.headers=new Headers({'oai-authen
 const p={version:1,theme:'bureau',name:'Test author',role:'Редактор',bio:'',email:'',location:'',available:true,sections:[],works:[]};
 const work={id:'work',type:'article',title:'Real work',project:'Project',sections:[],excerpt:'',body:'Original text',original:'',comment:'',items:[],status:'published',color:'#eeeeee',sender:'',platform:'telegram',seoTitle:'',seoDescription:'',keywords:'',videoUrl:'',model:'',goal:'',contribution:'',result:'',metricBefore:'',metricAfter:'',metricLabel:''};
 try{
- assert.equal((await routes.portfolio.GET()).status,401);
+ assert.equal((await routes.portfolio.PUT(request('PUT',{portfolio:p,revision:0}))).status,401);
+ let guestResponse=await routes.portfolio.GET();assert.equal(guestResponse.status,200);const guestCookie=guestResponse.headers.get('Set-Cookie');assert.match(guestCookie,/HttpOnly; Secure; SameSite=Lax/);const guestTokenCookie=guestCookie.split(';')[0];const guestData=await guestResponse.json();assert.equal(guestData.guest,true);assert.equal(guestData.portfolio.works.length,0);assert.ok(!JSON.stringify(guestData).includes(guestTokenCookie.split('=')[1]));
+ globalThis.__textfolioTest.headers=new Headers({Cookie:guestTokenCookie});let guestWrite=await routes.portfolio.PUT(request('PUT',{portfolio:{...p,name:'Guest author',works:[work]},revision:0}));assert.equal(guestWrite.status,200);assert.equal((await (await routes.portfolio.GET()).json()).portfolio.name,'Guest author');
+ globalThis.__textfolioTest.headers=new Headers();const stranger=await (await routes.portfolio.GET()).json();assert.notEqual(stranger.account,guestData.account);assert.equal(stranger.portfolio.works.length,0);
+ globalThis.__textfolioTest.headers=new Headers({Cookie:'__Host-textfolio-guest='+'a'.repeat(64)});assert.equal((await routes.portfolio.PUT(request('PUT',{portfolio:p,revision:1}))).status,401);
+ globalThis.__textfolioTest.headers=new Headers({Cookie:guestTokenCookie,'oai-authenticated-user-id':'upgraded-guest','oai-authenticated-user-email':'guest@example.com'});const upgraded=await (await routes.portfolio.GET()).json();assert.equal(upgraded.guest,false);assert.equal(upgraded.portfolio.name,'Guest author');assert.equal(sql.prepare('select count(*) n from guest_sessions where user_id=?').get(guestData.account).n,0);
+ globalThis.__textfolioTest.headers=new Headers({Cookie:guestTokenCookie});assert.equal((await routes.portfolio.PUT(request('PUT',{portfolio:p,revision:1}))).status,401);
+ sql.prepare('delete from portfolios where user_id=?').run('upgraded-guest');
  account('author-a');let data=await (await routes.portfolio.GET()).json();assert.equal(data.portfolio.works.length,0);assert.equal(data.revision,0);assert.equal(sql.prepare('select count(*) n from portfolios').get().n,0);
  let response=await routes.portfolio.PUT(request('PUT',{portfolio:{...p,works:[work]},revision:0}));assert.equal(response.status,200);assert.equal((await response.json()).revision,1);
  response=await routes.portfolio.PUT(request('PUT',{portfolio:{...p,name:'Other tab'},revision:0}));assert.equal(response.status,409);
@@ -44,5 +52,5 @@ try{
  account('author-a');await routes.publish.DELETE(request('DELETE'));globalThis.__textfolioTest.headers=new Headers();assert.equal((await routes['media/[id]'].GET(new Request('https://test.example/api/media/'+mediaId),{params:Promise.resolve({id:mediaId})})).status,404);
  account('author-a');
  const unsupported=new FormData();unsupported.append('file',new File(['<script>'],'file.svg',{type:'image/svg+xml'}));assert.equal((await routes.media.POST(new Request('https://test.example/api/media',{method:'POST',headers:{Origin:'https://test.example'},body:unsupported}))).status,400);
- console.log('PASS: authentication, empty account, persistent round trip, stale-write conflict, account isolation, CSRF, publication snapshot, draft exclusion, slug ownership, unpublish preservation, upload persistence and content-type restrictions.');
+ console.log('PASS: no-login guest creation, private cookie, guest persistence and isolation, forged token rejection, account upgrade, revoked guest token, authentication, empty account, persistent round trip, stale-write conflict, account isolation, CSRF, publication snapshot, draft exclusion, slug ownership, unpublish preservation, upload persistence and content-type restrictions.');
 }finally{sql.close();rmSync(tmp,{recursive:true,force:true});delete globalThis.__textfolioTest;}

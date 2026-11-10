@@ -21,3 +21,8 @@ export const media = sqliteTable('media', {
   filename: text('filename').notNull(),
   createdAt: text('created_at').notNull(),
 });
+export const guestSessions = sqliteTable('guest_sessions', {
+  tokenHash: text('token_hash').primaryKey(),
+  userId: text('user_id').notNull().unique(),
+  expiresAt: text('expires_at').notNull(),
+});

@@ -7,6 +7,7 @@ export function usePortfolio() {
   const [loadingError,setLoadingError] = useState('');
   const [saveError,setSaveError] = useState('');
   const [status,setStatus] = useState<'saved'|'saving'|'offline'|'conflict'>('saved');
+  const [guest,setGuest]=useState(false);
   const [publication,setPublication] = useState<Publication|null>(null);
   const [reloadTick,reload] = useState(0);
   const current = useRef<Portfolio|null>(null); const revision=useRef(0); const account=useRef('');
@@ -22,7 +23,7 @@ export function usePortfolio() {
     inFlight.current=true;setStatus('saving');
     try{
       const response=await fetch('/api/portfolio',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({portfolio:p,revision:revision.current})});
-      const data=await response.json() as {error?:string;revision:number;updatedAt:string;portfolio:unknown;account:string;publication:Publication|null};
+      const data=await response.json() as {error?:string;revision:number;updatedAt:string;portfolio:unknown;account:string;publication:Publication|null;guest:boolean};
       if(!response.ok){if(response.status===409){conflicted.current=true;setStatus('conflict');}throw new Error(data.error||'Не удалось сохранить изменения.');}
       revision.current=data.revision;saved.current=document;setSaveError('');setStatus('saved');dirty.current=JSON.stringify(current.current)!==document;
       try {localStorage.setItem(`textfolio:pending:${account.current}`,JSON.stringify({document:current.current,revision:revision.current,dirty:dirty.current}));}catch{}
@@ -32,12 +33,12 @@ export function usePortfolio() {
   useEffect(()=>{
     let active=true;setLoadingError('');
     (async()=>{try{
-      const response=await fetch('/api/portfolio',{cache:'no-store'});const data=await response.json() as {error?:string;revision:number;updatedAt:string;portfolio:unknown;account:string;publication:Publication|null};
+      const response=await fetch('/api/portfolio',{cache:'no-store'});const data=await response.json() as {error?:string;revision:number;updatedAt:string;portfolio:unknown;account:string;publication:Publication|null;guest:boolean};
       if(!response.ok)throw new Error(data.error||'Не удалось загрузить портфолио.');
       let p=validatePortfolio(data.portfolio);const serverDocument=JSON.stringify(p);if(!active)return;
       try {const raw=localStorage.getItem(`textfolio:pending:${data.account}`);if(raw){const recovery=JSON.parse(raw);if(recovery.dirty&&recovery.revision===data.revision)p=validatePortfolio(recovery.document);}}catch{}
       revision.current=data.revision;account.current=data.account;saved.current=serverDocument;current.current=p;conflicted.current=false;dirty.current=JSON.stringify(p)!==serverDocument;
-      setPortfolio(p);setPublication(data.publication);setSaveError('');setStatus('saved');
+      setPortfolio(p);setGuest(data.guest);setPublication(data.publication);setSaveError('');setStatus('saved');
     }catch(e){if(active)setLoadingError(e instanceof Error?e.message:'Не удалось соединиться с сервером.');}})();
     return()=>{active=false;};
   },[reloadTick]);
@@ -49,5 +50,5 @@ export function usePortfolio() {
     window.addEventListener('online',online);window.addEventListener('beforeunload',beforeUnload);
     return()=>{clearInterval(t);window.removeEventListener('online',online);window.removeEventListener('beforeunload',beforeUnload);};
   },[sync]);
-  return {p:portfolio,setP,saveError,status,publication,setPublication,loadingError,retry:()=>reload(n=>n+1),retrySave:sync};
+  return {p:portfolio,setP,guest,saveError,status,publication,setPublication,loadingError,retry:()=>reload(n=>n+1),retrySave:sync};
 }

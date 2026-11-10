@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 const allowed = new Set(['image/jpeg','image/png','image/webp','image/gif','video/mp4','video/webm']);
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return json({ error: 'Недопустимый источник запроса.' }, 403);
-  const user = await identity(); if (!user) return json({ error: 'Войдите в аккаунт.' }, 401);
+  const user = await identity(); if (!user) return json({ error: 'Сессия браузера недоступна. Обновите страницу.' }, 401);
   if (!env.BUCKET) return json({ error: 'Хранилище файлов недоступно.' }, 503);
   if (Number(request.headers.get('Content-Length')) > 21_000_000) return json({ error: 'Максимальный размер файла — 20 МБ.' }, 413);
   try {
